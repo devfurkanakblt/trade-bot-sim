@@ -1,0 +1,13 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.8, pytest-8.0.0, pluggy-1.6.0 -- C:\Users\User\AppData\Local\Programs\Python\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\User\Desktop\yazilim\python\trade-bot-sim\.claude\worktrees\crypto-paper-trading-sim
+configfile: pytest.ini
+collecting ... collected 4 items
+
+tests/data/test_binance_client.py::test_get_klines_parses_response PASSED [ 25%]
+tests/data/test_binance_client.py::test_get_current_price_parses_response PASSED [ 50%]
+tests/data/test_binance_client.py::test_get_klines_retries_on_failure_then_succeeds PASSED [ 75%]
+tests/data/test_binance_client.py::test_get_klines_raises_after_max_retries PASSED [100%]
+
+============================== 4 passed in 0.11s ==============================

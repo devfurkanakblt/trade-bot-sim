@@ -29,18 +29,28 @@ class MarketDataClient:
 
     def get_klines(self, symbol: str, interval: str = "1h", limit: int = 100) -> list[dict]:
         raw = self._get("/api/v3/klines", {"symbol": symbol, "interval": interval, "limit": limit})
-        return [
-            {
-                "open_time": row[0],
-                "open": float(row[1]),
-                "high": float(row[2]),
-                "low": float(row[3]),
-                "close": float(row[4]),
-                "volume": float(row[5]),
-            }
-            for row in raw
-        ]
+        try:
+            return [
+                {
+                    "open_time": row[0],
+                    "open": float(row[1]),
+                    "high": float(row[2]),
+                    "low": float(row[3]),
+                    "close": float(row[4]),
+                    "volume": float(row[5]),
+                }
+                for row in raw
+            ]
+        except (KeyError, TypeError, IndexError, ValueError) as exc:
+            raise MarketDataError(
+                f"Failed to parse klines response for {symbol}: {exc.__class__.__name__}: {exc}"
+            )
 
     def get_current_price(self, symbol: str) -> float:
         raw = self._get("/api/v3/ticker/price", {"symbol": symbol})
-        return float(raw["price"])
+        try:
+            return float(raw["price"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise MarketDataError(
+                f"Failed to parse price response for {symbol}: {exc.__class__.__name__}: {exc}"
+            )

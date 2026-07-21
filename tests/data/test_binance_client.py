@@ -75,3 +75,59 @@ def test_get_klines_raises_after_max_retries(mock_get, mock_sleep):
         client.get_klines("BTCUSDT")
 
     assert mock_get.call_count == 2
+
+
+@patch("src.data.binance_client.requests.get")
+def test_get_klines_raises_on_malformed_response_missing_fields(mock_get):
+    """Test that malformed klines (missing fields) raises MarketDataError."""
+    # Row missing required fields (only 3 elements instead of 12+)
+    raw = [[1690000000000, "100.0", "110.0"]]
+    mock_get.return_value = make_response(raw)
+
+    client = MarketDataClient()
+    with pytest.raises(MarketDataError) as exc_info:
+        client.get_klines("BTCUSDT")
+
+    assert "Failed to parse klines response" in str(exc_info.value)
+    assert "BTCUSDT" in str(exc_info.value)
+
+
+@patch("src.data.binance_client.requests.get")
+def test_get_klines_raises_on_malformed_response_bad_float(mock_get):
+    """Test that klines with non-numeric price raises MarketDataError."""
+    # Row with a non-numeric value where float is expected
+    raw = [[1690000000000, "not_a_number", "110.0", "90.0", "105.0", "12.5", 0, 0, 0, 0, 0, 0]]
+    mock_get.return_value = make_response(raw)
+
+    client = MarketDataClient()
+    with pytest.raises(MarketDataError) as exc_info:
+        client.get_klines("BTCUSDT")
+
+    assert "Failed to parse klines response" in str(exc_info.value)
+    assert "BTCUSDT" in str(exc_info.value)
+
+
+@patch("src.data.binance_client.requests.get")
+def test_get_current_price_raises_on_malformed_response_missing_price_key(mock_get):
+    """Test that price response without 'price' key raises MarketDataError."""
+    mock_get.return_value = make_response({"symbol": "BTCUSDT"})
+
+    client = MarketDataClient()
+    with pytest.raises(MarketDataError) as exc_info:
+        client.get_current_price("BTCUSDT")
+
+    assert "Failed to parse price response" in str(exc_info.value)
+    assert "BTCUSDT" in str(exc_info.value)
+
+
+@patch("src.data.binance_client.requests.get")
+def test_get_current_price_raises_on_malformed_response_bad_float(mock_get):
+    """Test that price response with non-numeric value raises MarketDataError."""
+    mock_get.return_value = make_response({"symbol": "BTCUSDT", "price": "not_a_number"})
+
+    client = MarketDataClient()
+    with pytest.raises(MarketDataError) as exc_info:
+        client.get_current_price("BTCUSDT")
+
+    assert "Failed to parse price response" in str(exc_info.value)
+    assert "BTCUSDT" in str(exc_info.value)
