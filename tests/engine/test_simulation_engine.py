@@ -21,6 +21,21 @@ class ExplodingStrategy(BaseStrategy):
         raise RuntimeError("strategy bug")
 
 
+class BuyThenExplodeStrategy(BaseStrategy):
+    """Succeeds with a BUY signal for the first symbol it sees, then raises for any subsequent symbol."""
+
+    name = "buy_then_explode"
+
+    def __init__(self):
+        self.calls = 0
+
+    def generate_signal(self, symbol, candles):
+        self.calls += 1
+        if self.calls == 1:
+            return Signal(Action.BUY, symbol)
+        raise RuntimeError("strategy bug on second symbol")
+
+
 class FakeMarketDataClient:
     def __init__(self, price: float = 100.0):
         self.price = price
@@ -103,3 +118,24 @@ def test_trade_is_logged_to_storage():
     trades = get_trades_since(conn, "agent_a", "1970-01-01T00:00:00")
     assert len(trades) == 1
     assert trades[0]["side"] == "BUY"
+
+
+def test_partial_tick_progress_is_persisted_when_strategy_raises_midway():
+    conn = make_conn()
+    agent = Agent("agent_a", BuyThenExplodeStrategy(), Portfolio(10_000.0))
+    engine = SimulationEngine([agent], FakeMarketDataClient(price=100.0), conn)
+
+    # run_tick must not raise: the outer try/except in run_tick still catches
+    # and logs the exception exactly as before.
+    engine.run_tick(["BTCUSDT", "ETHUSDT"])
+
+    # The first symbol's buy executed in-memory...
+    assert "BTCUSDT" in agent.portfolio.positions
+    assert agent.portfolio.cash < 10_000.0
+
+    # ...and that partial progress must be persisted to storage even though the
+    # tick raised partway through the watchlist loop on the second symbol.
+    saved_state = load_portfolio_state(conn, "agent_a")
+    assert saved_state is not None
+    assert saved_state["cash"] == agent.portfolio.cash
+    assert "BTCUSDT" in saved_state["positions"]

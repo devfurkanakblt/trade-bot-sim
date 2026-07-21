@@ -37,16 +37,17 @@ class SimulationEngine:
     def _run_agent_tick(self, agent, watchlist, candles_by_symbol, prices_by_symbol) -> None:
         self._apply_stop_losses(agent, prices_by_symbol)
 
-        for symbol in watchlist:
-            signal = agent.strategy.generate_signal(symbol, candles_by_symbol[symbol])
-            price = prices_by_symbol[symbol]
-            if signal.action == Action.BUY:
-                self._execute_buy(agent, symbol, price, prices_by_symbol)
-            elif signal.action == Action.SELL:
-                self._execute_sell(agent, symbol, price)
-
-        state = agent.portfolio.to_state()
-        save_portfolio_state(self.storage, agent.name, state["cash"], state["positions"])
+        try:
+            for symbol in watchlist:
+                signal = agent.strategy.generate_signal(symbol, candles_by_symbol[symbol])
+                price = prices_by_symbol[symbol]
+                if signal.action == Action.BUY:
+                    self._execute_buy(agent, symbol, price, prices_by_symbol)
+                elif signal.action == Action.SELL:
+                    self._execute_sell(agent, symbol, price)
+        finally:
+            state = agent.portfolio.to_state()
+            save_portfolio_state(self.storage, agent.name, state["cash"], state["positions"])
 
     def _apply_stop_losses(self, agent: Agent, prices_by_symbol: dict[str, float]) -> None:
         for symbol, position in list(agent.portfolio.positions.items()):
@@ -90,7 +91,7 @@ class SimulationEngine:
             trade["quantity"],
             trade["price"],
             trade["fee"],
-            datetime.datetime.utcnow().isoformat(),
+            datetime.datetime.now(datetime.UTC).isoformat(),
             entry_price=trade.get("entry_price"),
             pnl=trade.get("pnl"),
         )
