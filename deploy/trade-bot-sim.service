@@ -1,0 +1,16 @@
+[Unit]
+Description=Trade Bot Sim - crypto paper trading simulation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/trade-bot-sim
+EnvironmentFile=/opt/trade-bot-sim/.env
+ExecStart=/opt/trade-bot-sim/venv/bin/python /opt/trade-bot-sim/main.py
+Restart=always
+RestartSec=10
+User=tradebot
+
+[Install]
+WantedBy=multi-user.target
