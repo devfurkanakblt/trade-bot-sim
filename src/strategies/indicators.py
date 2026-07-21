@@ -13,7 +13,13 @@ def rsi(values: list[float], period: int = 14) -> pd.Series:
     avg_gain = gain.rolling(period).mean()
     avg_loss = loss.rolling(period).mean()
     rs = avg_gain / avg_loss.replace(0, 1e-12)
-    return 100 - (100 / (1 + rs))
+    rsi_values = 100 - (100 / (1 + rs))
+
+    # When both avg_gain and avg_loss are 0 (flat price series), RSI should be 50 (neutral)
+    flat_mask = (avg_gain == 0) & (avg_loss == 0)
+    rsi_values[flat_mask] = 50.0
+
+    return rsi_values
 
 
 def bollinger_bands(

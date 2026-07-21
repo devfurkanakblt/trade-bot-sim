@@ -26,6 +26,12 @@ def test_rsi_of_strictly_decreasing_series_is_low():
     assert result.iloc[-1] < 10
 
 
+def test_rsi_of_flat_price_series_is_neutral():
+    values = [100.0] * 30
+    result = rsi(values, period=14)
+    assert result.iloc[-1] == pytest.approx(50.0)
+
+
 def test_bollinger_bands_mid_equals_rolling_mean():
     values = [1.0, 2.0, 3.0, 4.0, 5.0]
     upper, mid, lower = bollinger_bands(values, period=5, num_std=2.0)
