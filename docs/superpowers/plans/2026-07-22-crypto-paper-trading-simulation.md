@@ -6,7 +6,7 @@
 
 **Architecture:** A single Python process organized into small, focused modules (data, portfolio, strategies, engine, storage, reporting, notifier, scheduler) wired together in `main.py`. Each of the 5 agents pairs one strategy implementation with its own `Portfolio` instance; the `SimulationEngine` ties strategies + portfolios + market data + persistence together on an hourly tick, isolating failures per agent. SQLite persists all state so the process can restart without losing simulated history. APScheduler drives both the hourly trading tick and the daily report job.
 
-**Tech Stack:** Python 3.11+, `requests` (Binance REST), `pandas` (indicators/features), `scikit-learn` (ML strategy), `APScheduler` (scheduling), `pushbullet.py` (notifications), `python-dotenv` (config), `sqlite3` (stdlib, persistence), `pytest` (testing).
+**Tech Stack:** Python 3.11+, `requests` (Binance REST + Pushbullet REST notifications), `pandas` (indicators/features), `scikit-learn` (ML strategy), `APScheduler` (scheduling), `python-dotenv` (config), `sqlite3` (stdlib, persistence), `pytest` (testing).
 
 ## Global Constraints
 
@@ -44,7 +44,6 @@ requests==2.31.0
 pandas==2.2.0
 scikit-learn==1.4.0
 APScheduler==3.10.4
-pushbullet.py==0.12.0
 python-dotenv==1.0.1
 pytest==8.0.0
 ```
@@ -1998,38 +1997,64 @@ git commit -m "feat: add daily report builder with agent ranking"
 
 ### Task 14: Pushbullet Notifier
 
+**Implementation note (deviation recorded during execution):** The plan originally called for the `pushbullet.py` PyPI package. During implementation, `pushbullet.py` was found to transitively depend on `python-magic`, which crashes the Python process with a hard access violation on import on Windows (no bundled libmagic DLL) — a real, reproducible segfault, not a cosmetic warning. Since the application only ever needs to send a plain text "note" push (never file/media pushes, the only feature that legitimately needs MIME detection), this task instead calls Pushbullet's REST API directly via `requests` (already a project dependency, and the same pattern already used in `src/data/binance_client.py`). This removes the `python-magic`/native-library dependency entirely and works identically on Windows and the Linux deployment target. `pushbullet.py` must NOT be added to `requirements.txt` — it was already added there in Task 1 and must be removed as part of this task.
+
 **Files:**
 - Create: `src/notifier/pushbullet_notifier.py`
 - Test: `tests/notifier/test_pushbullet_notifier.py`
 - Create: `tests/notifier/__init__.py` (empty)
+- Modify: `requirements.txt` (remove the `pushbullet.py==0.12.0` line added in Task 1)
 
 **Interfaces:**
-- Produces: `PushbulletNotifier` class (`PushbulletNotifier(access_token: str)`) with `.send_report(title: str, body: str) -> None`
+- Produces: `PushbulletNotifier` class (`PushbulletNotifier(access_token: str)`) with `.send_report(title: str, body: str) -> None`. Raises `NotifierError` if the Pushbullet API call fails.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
 `tests/notifier/test_pushbullet_notifier.py`:
 
 ```python
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from src.notifier.pushbullet_notifier import PushbulletNotifier
+import pytest
+import requests
+
+from src.notifier.pushbullet_notifier import NotifierError, PushbulletNotifier
 
 
-@patch("src.notifier.pushbullet_notifier.Pushbullet")
-def test_send_report_calls_push_note(mock_pushbullet_cls):
-    mock_instance = mock_pushbullet_cls.return_value
+def make_response(status_ok=True):
+    resp = Mock()
+    if status_ok:
+        resp.raise_for_status.return_value = None
+    else:
+        resp.raise_for_status.side_effect = requests.RequestException("boom")
+    return resp
+
+
+@patch("src.notifier.pushbullet_notifier.requests.post")
+def test_send_report_posts_note_to_pushbullet_api(mock_post):
+    mock_post.return_value = make_response()
 
     notifier = PushbulletNotifier("fake-token")
     notifier.send_report("Trade Bot Sim - Daily Report", "report body text")
 
-    mock_pushbullet_cls.assert_called_once_with("fake-token")
-    mock_instance.push_note.assert_called_once_with(
-        "Trade Bot Sim - Daily Report", "report body text"
+    mock_post.assert_called_once_with(
+        "https://api.pushbullet.com/v2/pushes",
+        headers={"Access-Token": "fake-token", "Content-Type": "application/json"},
+        json={"type": "note", "title": "Trade Bot Sim - Daily Report", "body": "report body text"},
+        timeout=10,
     )
+
+
+@patch("src.notifier.pushbullet_notifier.requests.post")
+def test_send_report_raises_notifier_error_on_failure(mock_post):
+    mock_post.return_value = make_response(status_ok=False)
+
+    notifier = PushbulletNotifier("fake-token")
+    with pytest.raises(NotifierError):
+        notifier.send_report("Title", "Body")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/notifier/test_pushbullet_notifier.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'src.notifier.pushbullet_notifier'`
@@ -2037,27 +2062,46 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'src.notifier.pushbull
 - [ ] **Step 3: Write `src/notifier/pushbullet_notifier.py`**
 
 ```python
-from pushbullet import Pushbullet
+import requests
+
+PUSHBULLET_API_URL = "https://api.pushbullet.com/v2/pushes"
+
+
+class NotifierError(Exception):
+    pass
 
 
 class PushbulletNotifier:
     def __init__(self, access_token: str):
-        self._pb = Pushbullet(access_token)
+        self.access_token = access_token
 
     def send_report(self, title: str, body: str) -> None:
-        self._pb.push_note(title, body)
+        try:
+            response = requests.post(
+                PUSHBULLET_API_URL,
+                headers={"Access-Token": self.access_token, "Content-Type": "application/json"},
+                json={"type": "note", "title": title, "body": body},
+                timeout=10,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise NotifierError(f"Failed to send Pushbullet notification: {exc}") from exc
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/notifier/test_pushbullet_notifier.py -v`
-Expected: PASS (1 test)
+Expected: PASS (2 tests)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Remove `pushbullet.py` from `requirements.txt`**
+
+Edit `requirements.txt` to delete the `pushbullet.py==0.12.0` line (added in Task 1, no longer needed).
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/notifier tests/notifier
-git commit -m "feat: add Pushbullet notifier wrapper"
+git add src/notifier tests/notifier requirements.txt
+git commit -m "feat: add Pushbullet notifier via direct REST API"
 ```
 
 ---
