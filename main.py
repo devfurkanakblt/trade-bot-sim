@@ -1,5 +1,6 @@
 import datetime
 import logging
+from zoneinfo import ZoneInfo
 
 from src.config import Config
 from src.data.binance_client import MarketDataClient
@@ -52,7 +53,11 @@ def make_hourly_tick(engine: SimulationEngine, config: Config):
 
 def make_daily_report(conn, market_data, agents: list[Agent], notifier, config: Config):
     def daily_report() -> None:
-        today = datetime.date.today().isoformat()
+        # Use Europe/Istanbul (the scheduler's own timezone) rather than the
+        # local system clock: on a UTC-clocked host, datetime.date.today() at
+        # 00:00 Istanbul time can still report the previous UTC day, mis-dating
+        # the report.
+        today = datetime.datetime.now(ZoneInfo("Europe/Istanbul")).date().isoformat()
         current_prices = {symbol: market_data.get_current_price(symbol) for symbol in config.WATCHLIST}
 
         agent_reports = []

@@ -35,9 +35,8 @@ class SimulationEngine:
                 logger.exception("Agent %s failed this tick", agent.name)
 
     def _run_agent_tick(self, agent, watchlist, candles_by_symbol, prices_by_symbol) -> None:
-        self._apply_stop_losses(agent, prices_by_symbol)
-
         try:
+            self._apply_stop_losses(agent, prices_by_symbol)
             for symbol in watchlist:
                 signal = agent.strategy.generate_signal(symbol, candles_by_symbol[symbol])
                 price = prices_by_symbol[symbol]

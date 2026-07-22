@@ -1,4 +1,6 @@
+import datetime
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 from src.config import Config
 from src.storage.db import init_db, save_portfolio_state
@@ -60,6 +62,29 @@ def test_daily_report_sends_notification_with_report_text(tmp_path):
     title, body = args
     assert "Daily Report" in title
     assert "trend_follower" in body
+
+
+def test_daily_report_dates_using_istanbul_timezone_not_local_clock(tmp_path):
+    # The scheduler fires on Europe/Istanbul time, and trades are timestamped
+    # in UTC, but the report's date label must come from Europe/Istanbul (not
+    # whatever timezone the host's system clock happens to be set to) so the
+    # label agrees with the scheduler's own notion of "today". Compute the
+    # expected date the same way production does and confirm that is what
+    # gets persisted as the report_date, rather than the host's local date.
+    config = make_config(tmp_path)
+    conn = init_db(config.DB_PATH)
+    agents = main.build_agents(conn, config)
+
+    fake_market_data = MagicMock()
+    fake_market_data.get_current_price.return_value = 100.0
+    fake_notifier = MagicMock()
+
+    daily_report = main.make_daily_report(conn, fake_market_data, agents, fake_notifier, config)
+    daily_report()
+
+    expected_date = datetime.datetime.now(ZoneInfo("Europe/Istanbul")).date().isoformat()
+    row = conn.execute("SELECT report_date FROM daily_reports").fetchone()
+    assert row[0] == expected_date
 
 
 def test_hourly_tick_calls_engine_run_tick():

@@ -36,7 +36,12 @@ CREATE TABLE IF NOT EXISTS balance_snapshots (
 
 
 def init_db(db_path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
+    # check_same_thread=False: the connection is shared between the scheduler's
+    # main thread and the worker thread(s) APScheduler runs jobs in, so SQLite's
+    # default same-thread check must be disabled. Concurrent writers are avoided
+    # separately by serializing jobs onto a single-worker executor (see
+    # src/scheduler/jobs.py).
+    conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.executescript(SCHEMA)
     conn.commit()
     return conn

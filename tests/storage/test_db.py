@@ -1,3 +1,5 @@
+import threading
+
 from src.storage.db import (
     get_previous_balance_snapshot,
     get_trades_since,
@@ -88,3 +90,33 @@ def test_balance_snapshot_and_previous_lookup():
 def test_previous_balance_snapshot_none_when_no_history():
     conn = make_conn()
     assert get_previous_balance_snapshot(conn, "trend_follower", "2026-07-22") is None
+
+
+def test_connection_allows_writes_from_a_different_thread(tmp_path):
+    # Production hands one connection to both the SimulationEngine and the
+    # scheduler's daily-report job, and APScheduler runs jobs on worker
+    # threads that did not create the connection. sqlite3's default
+    # check_same_thread=True would make any cross-thread use raise
+    # ProgrammingError. init_db must disable that check so the shared
+    # connection works from whatever thread APScheduler picks.
+    # A file-backed DB is used (not ":memory:") because in-memory SQLite
+    # databases are private to the connection that created them and are not
+    # meaningfully shared across threads even with check_same_thread=False -
+    # this mirrors what production actually does (a real DB_PATH file).
+    conn = init_db(str(tmp_path / "cross_thread.db"))
+
+    errors: list[Exception] = []
+
+    def write_from_other_thread():
+        try:
+            save_portfolio_state(conn, "trend_follower", 5000.0, {})
+        except Exception as exc:  # noqa: BLE001 - we want to capture and assert on it
+            errors.append(exc)
+
+    thread = threading.Thread(target=write_from_other_thread)
+    thread.start()
+    thread.join()
+
+    assert errors == []
+    state = load_portfolio_state(conn, "trend_follower")
+    assert state["cash"] == 5000.0

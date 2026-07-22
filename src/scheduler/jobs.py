@@ -1,9 +1,18 @@
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 
 def build_scheduler(hourly_tick_fn, daily_report_fn) -> BlockingScheduler:
-    scheduler = BlockingScheduler(timezone="Europe/Istanbul")
+    # At 00:00 both the hourly tick (minute=0) and the daily report (hour=0,
+    # minute=0) triggers match, so APScheduler's default multi-worker executor
+    # could run them concurrently on the shared SQLite connection and in-memory
+    # portfolio state. Pinning the default executor to a single worker thread
+    # serializes all job runs, so the two jobs can never execute at the same time.
+    scheduler = BlockingScheduler(
+        timezone="Europe/Istanbul",
+        executors={"default": ThreadPoolExecutor(max_workers=1)},
+    )
     scheduler.add_job(hourly_tick_fn, CronTrigger(minute=0))
     scheduler.add_job(daily_report_fn, CronTrigger(hour=0, minute=0))
     return scheduler
