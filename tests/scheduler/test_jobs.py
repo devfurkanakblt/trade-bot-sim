@@ -5,6 +5,15 @@ def noop():
     pass
 
 
+def test_tick_job_uses_minute_interval_trigger():
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    scheduler = build_scheduler(noop, noop)
+    tick_job = scheduler.get_jobs()[0]
+    assert isinstance(tick_job.trigger, IntervalTrigger)
+    assert tick_job.trigger.interval.total_seconds() == 60
+
+
 def test_build_scheduler_registers_two_jobs():
     scheduler = build_scheduler(noop, noop)
     jobs = scheduler.get_jobs()
