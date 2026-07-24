@@ -2,7 +2,7 @@ import time
 
 import requests
 
-BASE_URL = "https://api.binance.com"
+BASE_URL = "https://data-api.binance.vision"
 
 
 class MarketDataError(Exception):
