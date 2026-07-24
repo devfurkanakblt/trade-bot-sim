@@ -1,5 +1,6 @@
 import datetime
 import logging
+import threading
 from zoneinfo import ZoneInfo
 
 from src.config import Config
@@ -22,6 +23,8 @@ from src.strategies.mean_reversion import MeanReversionStrategy
 from src.strategies.ml_predictor import MLPredictorStrategy
 from src.strategies.momentum_breakout import MomentumBreakoutStrategy
 from src.strategies.trend_follower import TrendFollowerStrategy
+from src.web.dashboard import run_dashboard
+from src.web.live_state import LiveState
 
 STRATEGY_CLASSES = {
     "trend_follower": TrendFollowerStrategy,
@@ -44,11 +47,11 @@ def build_agents(conn, config: Config) -> list[Agent]:
     return agents
 
 
-def make_hourly_tick(engine: SimulationEngine, config: Config):
-    def hourly_tick() -> None:
-        engine.run_tick(config.WATCHLIST)
+def make_minute_tick(engine: SimulationEngine, config: Config):
+    def minute_tick() -> None:
+        engine.run_tick(config.WATCHLIST, interval=config.KLINE_INTERVAL)
 
-    return hourly_tick
+    return minute_tick
 
 
 def make_daily_report(conn, market_data, agents: list[Agent], notifier, config: Config):
@@ -85,13 +88,20 @@ def main() -> None:
     market_data = MarketDataClient()
     notifier = PushbulletNotifier(config.PUSHBULLET_TOKEN)
 
+    live_state = LiveState()
     agents = build_agents(conn, config)
-    engine = SimulationEngine(agents, market_data, conn)
+    engine = SimulationEngine(agents, market_data, conn, live_state=live_state)
 
-    hourly_tick = make_hourly_tick(engine, config)
+    minute_tick = make_minute_tick(engine, config)
     daily_report = make_daily_report(conn, market_data, agents, notifier, config)
 
-    scheduler = build_scheduler(hourly_tick, daily_report)
+    web_thread = threading.Thread(
+        target=run_dashboard, args=(live_state, config.WEB_PORT), daemon=True
+    )
+    web_thread.start()
+    logging.info("Canlı panel: http://127.0.0.1:%d", config.WEB_PORT)
+
+    scheduler = build_scheduler(minute_tick, daily_report)
     scheduler.start()
 
 

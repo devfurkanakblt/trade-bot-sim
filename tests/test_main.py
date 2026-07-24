@@ -87,11 +87,11 @@ def test_daily_report_dates_using_istanbul_timezone_not_local_clock(tmp_path):
     assert row[0] == expected_date
 
 
-def test_hourly_tick_calls_engine_run_tick():
+def test_minute_tick_calls_engine_run_tick_with_interval():
     fake_engine = MagicMock()
     config = Config()
 
-    hourly_tick = main.make_hourly_tick(fake_engine, config)
-    hourly_tick()
+    minute_tick = main.make_minute_tick(fake_engine, config)
+    minute_tick()
 
-    fake_engine.run_tick.assert_called_once_with(config.WATCHLIST)
+    fake_engine.run_tick.assert_called_once_with(config.WATCHLIST, interval=config.KLINE_INTERVAL)
