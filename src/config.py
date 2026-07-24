@@ -12,5 +12,5 @@ class Config:
         self.DB_PATH = os.getenv("DB_PATH", "trade_bot_sim.db")
         self.PUSHBULLET_TOKEN = os.getenv("PUSHBULLET_TOKEN", "")
         self.TIMEZONE = "Europe/Istanbul"
-        self.KLINE_INTERVAL = os.getenv("KLINE_INTERVAL", "1m")
+        self.KLINE_INTERVAL = os.getenv("KLINE_INTERVAL", "15m")
         self.WEB_PORT = int(os.getenv("WEB_PORT", "8000"))

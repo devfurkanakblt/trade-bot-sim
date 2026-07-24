@@ -8,6 +8,7 @@ class LiveState:
     def __init__(self):
         self._lock = threading.Lock()
         self._agents: dict[str, dict] = {}
+        self._candles: dict[str, list[dict]] = {}
         self._updated_at: str | None = None
 
     def update_agent(
@@ -35,6 +36,17 @@ class LiveState:
                 "updated_at": now,
             }
             self._updated_at = now
+
+    def update_candles(self, candles_by_symbol: dict[str, list[dict]]) -> None:
+        with self._lock:
+            self._candles = {
+                symbol: [{"t": c["open_time"], "c": c["close"]} for c in candles]
+                for symbol, candles in candles_by_symbol.items()
+            }
+
+    def candles_snapshot(self) -> dict:
+        with self._lock:
+            return {symbol: [dict(p) for p in series] for symbol, series in self._candles.items()}
 
     def snapshot(self) -> dict:
         with self._lock:

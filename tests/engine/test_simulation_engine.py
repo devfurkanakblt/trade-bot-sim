@@ -151,6 +151,19 @@ def test_run_tick_records_buy_decision_in_live_state():
     assert a["symbol"] == "BTCUSDT"
 
 
+def test_run_tick_feeds_candles_into_live_state():
+    conn = make_conn()
+    agent = Agent("holder", FixedSignalStrategy(Action.HOLD), Portfolio(10_000.0))
+    live = LiveState()
+    engine = SimulationEngine([agent], FakeMarketDataClient(price=100.0), conn, live_state=live)
+
+    engine.run_tick(["BTCUSDT", "ETHUSDT"])
+
+    candles = live.candles_snapshot()
+    assert set(candles) == {"BTCUSDT", "ETHUSDT"}
+    assert candles["BTCUSDT"] == [{"t": 0, "c": 100.0}]
+
+
 def test_run_tick_without_live_state_still_works():
     conn = make_conn()
     agent = Agent("holder", FixedSignalStrategy(Action.HOLD), Portfolio(10_000.0))

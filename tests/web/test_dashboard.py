@@ -26,3 +26,14 @@ def test_index_returns_html():
     assert resp.status_code == 200
     assert "text/html" in resp.content_type
     assert b"/api/state" in resp.data  # sayfa JSON endpoint'ini poll ediyor
+    assert b"/api/candles" in resp.data  # sayfa candle endpoint'ini de poll ediyor
+
+
+def test_api_candles_returns_series_json():
+    state = LiveState()
+    state.update_candles({"BTCUSDT": [{"open_time": 1000, "close": 1.5}]})
+    app = create_app(state)
+    app.config.update(TESTING=True)
+    resp = app.test_client().get("/api/candles")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"BTCUSDT": [{"t": 1000, "c": 1.5}]}

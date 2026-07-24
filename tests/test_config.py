@@ -3,7 +3,7 @@ from src.config import Config
 
 def test_config_has_kline_interval_and_web_port():
     config = Config()
-    assert config.KLINE_INTERVAL == "1m"
+    assert config.KLINE_INTERVAL == "15m"
     assert config.WEB_PORT == 8000
 
 

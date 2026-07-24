@@ -29,6 +29,9 @@ class SimulationEngine:
         candles_by_symbol = {symbol: self.market_data.get_klines(symbol, interval=interval) for symbol in watchlist}
         prices_by_symbol = {symbol: candles_by_symbol[symbol][-1]["close"] for symbol in watchlist}
 
+        if self.live_state is not None:
+            self.live_state.update_candles(candles_by_symbol)
+
         for agent in self.agents:
             try:
                 self._run_agent_tick(agent, watchlist, candles_by_symbol, prices_by_symbol)

@@ -18,11 +18,16 @@ INDEX_HTML = """<!doctype html>
   .pos { color: #2ecc71; }
   .neg { color: #e74c3c; }
   .muted { color: #8a8f98; font-size: 12px; }
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .chart { background: #171a21; border: 1px solid #2a2d34; border-radius: 8px; padding: 12px; }
+  .chart h2 { font-size: 14px; margin: 0 0 6px; display: flex; justify-content: space-between; }
+  .chart svg { width: 100%; height: 120px; display: block; }
 </style>
 </head>
 <body>
 <h1>Trade Bot Sim — Canlı Panel</h1>
 <div class="totals" id="totals">Yükleniyor…</div>
+<div class="charts" id="charts"></div>
 <table>
   <thead>
     <tr><th>Bot</th><th>Karar</th><th>Sembol</th><th>Net K/Z ($)</th><th>Net K/Z (%)</th><th>Nakit</th><th>Portföy</th></tr>
@@ -60,6 +65,40 @@ async function refresh() {
 }
 refresh();
 setInterval(refresh, 5000);
+
+const CHART_W = 300, CHART_H = 120, PAD = 6;
+function chartPoints(series) {
+  const closes = series.map(p => p.c);
+  const min = Math.min(...closes), max = Math.max(...closes);
+  const span = (max - min) || 1;
+  const n = series.length;
+  return series.map((p, i) => {
+    const x = n === 1 ? CHART_W / 2 : PAD + (i / (n - 1)) * (CHART_W - 2 * PAD);
+    const y = PAD + (1 - (p.c - min) / span) * (CHART_H - 2 * PAD);
+    return x.toFixed(1) + "," + y.toFixed(1);
+  }).join(" ");
+}
+async function drawCharts() {
+  try {
+    const r = await fetch("/api/candles");
+    const d = await r.json();
+    const html = Object.keys(d).map(sym => {
+      const series = d[sym];
+      if (!series || series.length === 0) return "";
+      const last = series[series.length - 1].c;
+      const up = last >= series[0].c;
+      const color = up ? "#2ecc71" : "#e74c3c";
+      return "<div class='chart'>" +
+        "<h2><span>" + sym + "</span><span class='" + (up ? "pos" : "neg") + "'>$" + last.toFixed(2) + "</span></h2>" +
+        "<svg viewBox='0 0 " + CHART_W + " " + CHART_H + "' preserveAspectRatio='none'>" +
+        "<polyline fill='none' stroke='" + color + "' stroke-width='1.5' vector-effect='non-scaling-stroke' points='" + chartPoints(series) + "'/>" +
+        "</svg></div>";
+    }).join("");
+    document.getElementById("charts").innerHTML = html || "<p class='muted'>Grafik verisi bekleniyor…</p>";
+  } catch (e) { /* sessizce yeniden denenecek */ }
+}
+drawCharts();
+setInterval(drawCharts, 15000);
 </script>
 </body>
 </html>
@@ -76,6 +115,10 @@ def create_app(live_state) -> Flask:
     @app.get("/api/state")
     def api_state():
         return jsonify(live_state.snapshot())
+
+    @app.get("/api/candles")
+    def api_candles():
+        return jsonify(live_state.candles_snapshot())
 
     return app
 

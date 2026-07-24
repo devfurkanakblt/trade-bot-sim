@@ -14,6 +14,6 @@ def build_scheduler(minute_tick_fn, daily_report_fn) -> BlockingScheduler:
         timezone="Europe/Istanbul",
         executors={"default": ThreadPoolExecutor(max_workers=1)},
     )
-    scheduler.add_job(minute_tick_fn, IntervalTrigger(minutes=1))
+    scheduler.add_job(minute_tick_fn, IntervalTrigger(seconds=5))
     scheduler.add_job(daily_report_fn, CronTrigger(hour=0, minute=0))
     return scheduler

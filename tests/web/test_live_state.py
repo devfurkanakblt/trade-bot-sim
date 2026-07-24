@@ -52,3 +52,29 @@ def test_aggregates_multiple_agents():
     assert [a["name"] for a in snap["agents"]] == ["a", "b"]
     assert snap["total_value"] == 20007.0
     assert round(snap["total_pnl_abs"], 6) == 7.0
+
+
+def test_empty_candles_snapshot():
+    state = LiveState()
+    assert state.candles_snapshot() == {}
+
+
+def test_update_candles_keeps_time_and_close_series():
+    state = LiveState()
+    state.update_candles(
+        {
+            "BTCUSDT": [
+                {"open_time": 1000, "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 9.0},
+                {"open_time": 2000, "open": 1.5, "high": 3.0, "low": 1.0, "close": 2.5, "volume": 8.0},
+            ]
+        }
+    )
+    snap = state.candles_snapshot()
+    assert snap == {"BTCUSDT": [{"t": 1000, "c": 1.5}, {"t": 2000, "c": 2.5}]}
+
+
+def test_update_candles_overwrites_previous_series():
+    state = LiveState()
+    state.update_candles({"BTCUSDT": [{"open_time": 1000, "close": 1.5}]})
+    state.update_candles({"BTCUSDT": [{"open_time": 2000, "close": 2.5}]})
+    assert state.candles_snapshot() == {"BTCUSDT": [{"t": 2000, "c": 2.5}]}
