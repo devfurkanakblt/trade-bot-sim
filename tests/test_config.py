@@ -1,6 +1,12 @@
 from src.config import Config
 
 
+def test_config_has_kline_interval_and_web_port():
+    config = Config()
+    assert config.KLINE_INTERVAL == "1m"
+    assert config.WEB_PORT == 8000
+
+
 def test_config_defaults(monkeypatch):
     monkeypatch.delenv("DB_PATH", raising=False)
     monkeypatch.delenv("PUSHBULLET_TOKEN", raising=False)
