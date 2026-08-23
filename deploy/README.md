@@ -1,5 +1,9 @@
 # 24/7 VM Deployment
 
+For the fully free IPv6-only Google Compute + Cloudflare proxy setup, follow
+[`GOOGLE_CLOUDFLARE.md`](GOOGLE_CLOUDFLARE.md). The instructions below use a
+regular external IPv4 address, which Google can bill separately.
+
 The simulator is designed to run as a long-lived Ubuntu service with a local,
 persistent SQLite database. Google Compute Engine is the primary free-tier
 target; the same setup script also works on an Oracle Ubuntu VM.

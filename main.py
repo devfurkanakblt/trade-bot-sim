@@ -81,6 +81,12 @@ def include_open_position_symbols(symbols: list[str], agents: list[Agent]) -> li
     return list(dict.fromkeys([*symbols, *open_symbols]))
 
 
+def get_open_position_symbols(agents: list[Agent]) -> list[str]:
+    return list(
+        dict.fromkeys(symbol for agent in agents for symbol in agent.portfolio.positions)
+    )
+
+
 def build_agents(conn, config: Config) -> list[Agent]:
     agents = []
     for name, strategy_cls in STRATEGY_CLASSES.items():
@@ -104,8 +110,12 @@ def build_agents(conn, config: Config) -> list[Agent]:
 def make_minute_tick(engine: SimulationEngine, config: Config, market_universe: MarketUniverse | None = None):
     def minute_tick() -> None:
         watchlist = market_universe.get_symbols() if market_universe else config.WATCHLIST
-        watchlist = include_open_position_symbols(watchlist, engine.agents)
-        engine.run_tick(watchlist, interval=config.KLINE_INTERVAL)
+        risk_symbols = get_open_position_symbols(engine.agents)
+        engine.run_tick(
+            watchlist,
+            interval=config.KLINE_INTERVAL,
+            risk_symbols=risk_symbols,
+        )
 
     return minute_tick
 
@@ -176,8 +186,15 @@ def main() -> None:
 
     config = Config()
     conn = init_db(config.DB_PATH)
-    market_data = MarketDataClient()
-    notifier = PushbulletNotifier(config.PUSHBULLET_TOKEN)
+    market_data = MarketDataClient(
+        base_url=config.MARKET_DATA_BASE_URL,
+        proxy_token=config.OUTBOUND_PROXY_TOKEN,
+    )
+    notifier = PushbulletNotifier(
+        config.PUSHBULLET_TOKEN,
+        api_url=config.PUSHBULLET_API_URL,
+        proxy_token=config.OUTBOUND_PROXY_TOKEN,
+    )
 
     live_state = LiveState()
     agents = build_agents(conn, config)

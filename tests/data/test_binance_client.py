@@ -38,6 +38,25 @@ def test_get_klines_parses_response(mock_get):
     mock_get.assert_called_once()
     _, kwargs = mock_get.call_args
     assert kwargs["params"] == {"symbol": "BTCUSDT", "interval": "1h", "limit": 1}
+    assert kwargs["headers"] is None
+
+
+@patch("src.data.binance_client.requests.get")
+def test_market_data_proxy_adds_authentication_header(mock_get):
+    mock_get.return_value = make_response({"symbol": "BTCUSDT", "price": "123.45"})
+
+    client = MarketDataClient(
+        base_url="https://trade-bot-proxy.example.workers.dev/binance/",
+        proxy_token="proxy-secret",
+    )
+    assert client.get_current_price("BTCUSDT") == 123.45
+
+    mock_get.assert_called_once_with(
+        "https://trade-bot-proxy.example.workers.dev/binance/api/v3/ticker/price",
+        params={"symbol": "BTCUSDT"},
+        headers={"X-Proxy-Token": "proxy-secret"},
+        timeout=10,
+    )
 
 
 @patch("src.data.binance_client.time.time", return_value=100.0)

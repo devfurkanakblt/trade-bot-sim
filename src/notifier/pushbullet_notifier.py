@@ -8,14 +8,24 @@ class NotifierError(Exception):
 
 
 class PushbulletNotifier:
-    def __init__(self, access_token: str):
+    def __init__(
+        self,
+        access_token: str,
+        api_url: str = PUSHBULLET_API_URL,
+        proxy_token: str = "",
+    ):
         self.access_token = access_token
+        self.api_url = api_url
+        self.proxy_token = proxy_token
 
     def send_report(self, title: str, body: str) -> None:
         try:
+            headers = {"Access-Token": self.access_token, "Content-Type": "application/json"}
+            if self.proxy_token:
+                headers["X-Proxy-Token"] = self.proxy_token
             response = requests.post(
-                PUSHBULLET_API_URL,
-                headers={"Access-Token": self.access_token, "Content-Type": "application/json"},
+                self.api_url,
+                headers=headers,
                 json={"type": "note", "title": title, "body": body},
                 timeout=10,
             )

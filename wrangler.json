@@ -1,0 +1,7 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "trade-bot-proxy",
+  "main": "deploy/cloudflare-worker.js",
+  "compatibility_date": "2026-08-23",
+  "workers_dev": true
+}

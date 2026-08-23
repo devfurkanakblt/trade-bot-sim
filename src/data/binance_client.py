@@ -10,16 +10,31 @@ class MarketDataError(Exception):
 
 
 class MarketDataClient:
-    def __init__(self, base_url: str = BASE_URL, max_retries: int = 3, retry_delay_seconds: float = 2.0):
-        self.base_url = base_url
+    def __init__(
+        self,
+        base_url: str = BASE_URL,
+        max_retries: int = 3,
+        retry_delay_seconds: float = 2.0,
+        proxy_token: str = "",
+    ):
+        self.base_url = base_url.rstrip("/")
         self.max_retries = max_retries
         self.retry_delay_seconds = retry_delay_seconds
+        self.proxy_token = proxy_token
 
     def _get(self, path: str, params: dict):
         last_exc = None
         for _ in range(self.max_retries):
             try:
-                resp = requests.get(f"{self.base_url}{path}", params=params, timeout=10)
+                headers = {}
+                if self.proxy_token:
+                    headers["X-Proxy-Token"] = self.proxy_token
+                resp = requests.get(
+                    f"{self.base_url}{path}",
+                    params=params,
+                    headers=headers or None,
+                    timeout=10,
+                )
                 resp.raise_for_status()
                 return resp.json()
             except requests.RequestException as exc:

@@ -31,6 +31,29 @@ def test_send_report_posts_note_to_pushbullet_api(mock_post):
 
 
 @patch("src.notifier.pushbullet_notifier.requests.post")
+def test_proxy_report_uses_custom_url_and_authentication_header(mock_post):
+    mock_post.return_value = make_response()
+    notifier = PushbulletNotifier(
+        "pushbullet-token",
+        api_url="https://trade-bot-proxy.example.workers.dev/pushbullet/v2/pushes",
+        proxy_token="proxy-secret",
+    )
+
+    notifier.send_report("Title", "Body")
+
+    mock_post.assert_called_once_with(
+        "https://trade-bot-proxy.example.workers.dev/pushbullet/v2/pushes",
+        headers={
+            "Access-Token": "pushbullet-token",
+            "Content-Type": "application/json",
+            "X-Proxy-Token": "proxy-secret",
+        },
+        json={"type": "note", "title": "Title", "body": "Body"},
+        timeout=10,
+    )
+
+
+@patch("src.notifier.pushbullet_notifier.requests.post")
 def test_send_report_raises_notifier_error_on_failure(mock_post):
     mock_post.return_value = make_response(status_ok=False)
 

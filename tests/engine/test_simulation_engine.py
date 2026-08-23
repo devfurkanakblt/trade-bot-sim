@@ -101,6 +101,33 @@ def test_stop_loss_triggers_sell_before_new_signals():
     assert "BTCUSDT" not in agent.portfolio.positions
 
 
+def test_off_universe_position_uses_current_price_for_risk_without_fetching_klines():
+    class RecordingMarket(FakeMarketDataClient):
+        def __init__(self):
+            super().__init__(price=100.0)
+            self.kline_symbols = []
+
+        def get_klines(self, symbol, interval="1h", limit=100):
+            self.kline_symbols.append(symbol)
+            return super().get_klines(symbol, interval=interval, limit=limit)
+
+        def get_current_price(self, symbol):
+            assert symbol == "OLDUSDT"
+            return 94.0
+
+    conn = make_conn()
+    portfolio = Portfolio(10_000.0)
+    portfolio.buy("OLDUSDT", price=100.0, cash_amount=1_000.0)
+    agent = Agent("agent_a", FixedSignalStrategy(Action.HOLD), portfolio)
+    market = RecordingMarket()
+    engine = SimulationEngine([agent], market, conn)
+
+    engine.run_tick(["BTCUSDT"], risk_symbols=["OLDUSDT"])
+
+    assert market.kline_symbols == ["BTCUSDT"]
+    assert "OLDUSDT" not in portfolio.positions
+
+
 def test_agent_exception_does_not_stop_other_agents():
     conn = make_conn()
     broken_agent = Agent("broken", ExplodingStrategy(), Portfolio(10_000.0))

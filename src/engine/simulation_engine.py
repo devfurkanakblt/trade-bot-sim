@@ -37,7 +37,12 @@ class SimulationEngine:
         self.live_state = live_state
         self._last_processed_open_time: dict[str, int] = {}
 
-    def run_tick(self, watchlist: list[str], interval: str = "1h") -> None:
+    def run_tick(
+        self,
+        watchlist: list[str],
+        interval: str = "1h",
+        risk_symbols: list[str] | None = None,
+    ) -> None:
         candles_by_symbol = self._fetch_candles(watchlist, interval)
         if not candles_by_symbol:
             logger.warning("No candle data was available; tick skipped")
@@ -48,6 +53,10 @@ class SimulationEngine:
             return
         available_watchlist = [symbol for symbol in watchlist if symbol in candles_by_symbol]
         prices_by_symbol = {symbol: candles_by_symbol[symbol][-1]["close"] for symbol in available_watchlist}
+        risk_only_symbols = [
+            symbol for symbol in (risk_symbols or []) if symbol not in prices_by_symbol
+        ]
+        prices_by_symbol.update(self._fetch_current_prices(risk_only_symbols))
 
         if self.live_state is not None:
             self.live_state.update_candles(candles_by_symbol)
@@ -97,6 +106,24 @@ class SimulationEngine:
                 except Exception:
                     logger.exception("Could not fetch candles for %s", symbol)
         return candles_by_symbol
+
+    def _fetch_current_prices(self, symbols: list[str]) -> dict[str, float]:
+        """Fetch lightweight prices for open positions outside the strategy universe."""
+        prices: dict[str, float] = {}
+        if not symbols:
+            return prices
+        with ThreadPoolExecutor(max_workers=min(MARKET_FETCH_WORKERS, len(symbols))) as executor:
+            requests = {
+                executor.submit(self.market_data.get_current_price, symbol): symbol
+                for symbol in symbols
+            }
+            for request in as_completed(requests):
+                symbol = requests[request]
+                try:
+                    prices[symbol] = request.result()
+                except Exception:
+                    logger.exception("Could not fetch risk price for %s", symbol)
+        return prices
 
     def _run_agent_tick(self, agent, watchlist, candles_by_symbol, prices_by_symbol) -> None:
         decision = "HOLD"

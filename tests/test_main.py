@@ -101,7 +101,11 @@ def test_minute_tick_calls_engine_run_tick_with_interval():
     minute_tick = main.make_minute_tick(fake_engine, config)
     minute_tick()
 
-    fake_engine.run_tick.assert_called_once_with(config.WATCHLIST, interval=config.KLINE_INTERVAL)
+    fake_engine.run_tick.assert_called_once_with(
+        config.WATCHLIST,
+        interval=config.KLINE_INTERVAL,
+        risk_symbols=[],
+    )
 
 
 def test_market_universe_caches_volume_ranked_symbols(monkeypatch):
@@ -122,6 +126,24 @@ def test_open_position_symbols_are_kept_in_watchlist():
     assert main.include_open_position_symbols(["BTCUSDT", "OLDUSDT"], [agent]) == [
         "BTCUSDT", "OLDUSDT"
     ]
+
+
+def test_minute_tick_fetches_only_lightweight_risk_price_for_position_outside_universe():
+    config = Config()
+    agent = MagicMock()
+    agent.portfolio.positions = {"OLDUSDT": object()}
+    engine = MagicMock()
+    engine.agents = [agent]
+    universe = MagicMock()
+    universe.get_symbols.return_value = ["BTCUSDT"]
+
+    main.make_minute_tick(engine, config, universe)()
+
+    engine.run_tick.assert_called_once_with(
+        ["BTCUSDT"],
+        interval=config.KLINE_INTERVAL,
+        risk_symbols=["OLDUSDT"],
+    )
 
 
 def test_hourly_snapshot_records_full_portfolio_equity(tmp_path):
