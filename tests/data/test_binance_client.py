@@ -27,6 +27,7 @@ def test_get_klines_parses_response(mock_get):
     assert candles == [
         {
             "open_time": 1690000000000,
+            "close_time": 0,
             "open": 100.0,
             "high": 110.0,
             "low": 90.0,
@@ -37,6 +38,20 @@ def test_get_klines_parses_response(mock_get):
     mock_get.assert_called_once()
     _, kwargs = mock_get.call_args
     assert kwargs["params"] == {"symbol": "BTCUSDT", "interval": "1h", "limit": 1}
+
+
+@patch("src.data.binance_client.time.time", return_value=100.0)
+@patch("src.data.binance_client.requests.get")
+def test_get_klines_excludes_currently_forming_candle(mock_get, _mock_time):
+    raw = [
+        [0, "100", "110", "90", "105", "10", 99_999, 0, 0, 0, 0, 0],
+        [60_000, "105", "115", "100", "110", "11", 159_999, 0, 0, 0, 0, 0],
+    ]
+    mock_get.return_value = make_response(raw)
+
+    candles = MarketDataClient().get_klines("BTCUSDT")
+
+    assert [candle["open_time"] for candle in candles] == [0]
 
 
 @patch("src.data.binance_client.requests.get")
@@ -131,3 +146,16 @@ def test_get_current_price_raises_on_malformed_response_bad_float(mock_get):
 
     assert "Failed to parse price response" in str(exc_info.value)
     assert "BTCUSDT" in str(exc_info.value)
+
+
+@patch("src.data.binance_client.requests.get")
+def test_get_popular_usdt_pairs_ranks_volume_and_filters_leveraged_tokens(mock_get):
+    mock_get.return_value = make_response([
+        {"symbol": "ETHUSDT", "quoteVolume": "200"},
+        {"symbol": "BTCUSDT", "quoteVolume": "300"},
+        {"symbol": "BTCUPUSDT", "quoteVolume": "999999"},
+        {"symbol": "EURUSDT", "quoteVolume": "0"},
+        {"symbol": "BNBBUSD", "quoteVolume": "10000"},
+    ])
+
+    assert MarketDataClient().get_popular_usdt_pairs(limit=1) == ["BTCUSDT"]

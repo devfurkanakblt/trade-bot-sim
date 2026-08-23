@@ -14,13 +14,13 @@ def make_config(tmp_path):
     return config
 
 
-def test_build_agents_creates_five_agents_with_fresh_state(tmp_path):
+def test_build_agents_creates_spot_and_leveraged_agents_with_fresh_state(tmp_path):
     config = make_config(tmp_path)
     conn = init_db(config.DB_PATH)
 
     agents = main.build_agents(conn, config)
 
-    assert len(agents) == 5
+    assert len(agents) == 8
     names = {agent.name for agent in agents}
     assert names == {
         "trend_follower",
@@ -28,9 +28,16 @@ def test_build_agents_creates_five_agents_with_fresh_state(tmp_path):
         "momentum_breakout",
         "grid_trader",
         "ml_predictor",
+        "scalper",
+        "leveraged_scalper",
+        "leveraged_breakout",
     }
     for agent in agents:
         assert agent.portfolio.cash == config.INITIAL_BALANCE
+
+    leveraged = {agent.name: agent for agent in agents if agent.portfolio.is_leveraged}
+    assert leveraged["leveraged_scalper"].portfolio.leverage == 5
+    assert leveraged["leveraged_breakout"].portfolio.leverage == 3
 
 
 def test_build_agents_restores_existing_state_from_storage(tmp_path):
@@ -95,3 +102,43 @@ def test_minute_tick_calls_engine_run_tick_with_interval():
     minute_tick()
 
     fake_engine.run_tick.assert_called_once_with(config.WATCHLIST, interval=config.KLINE_INTERVAL)
+
+
+def test_market_universe_caches_volume_ranked_symbols(monkeypatch):
+    config = Config()
+    config.MARKET_UNIVERSE_REFRESH_SECONDS = 60
+    market_data = MagicMock()
+    market_data.get_popular_usdt_pairs.return_value = ["BTCUSDT", "ETHUSDT"]
+    universe = main.MarketUniverse(market_data, config)
+
+    assert universe.get_symbols() == ["BTCUSDT", "ETHUSDT"]
+    assert universe.get_symbols() == ["BTCUSDT", "ETHUSDT"]
+    market_data.get_popular_usdt_pairs.assert_called_once_with(config.MARKET_UNIVERSE_SIZE)
+
+
+def test_open_position_symbols_are_kept_in_watchlist():
+    agent = MagicMock()
+    agent.portfolio.positions = {"OLDUSDT": object()}
+    assert main.include_open_position_symbols(["BTCUSDT", "OLDUSDT"], [agent]) == [
+        "BTCUSDT", "OLDUSDT"
+    ]
+
+
+def test_hourly_snapshot_records_full_portfolio_equity(tmp_path):
+    config = make_config(tmp_path)
+    conn = init_db(config.DB_PATH)
+    agents = main.build_agents(conn, config)
+    trend = next(agent for agent in agents if agent.name == "trend_follower")
+    trend.portfolio.buy("BTCUSDT", price=100.0, cash_amount=2_000.0)
+    market_data = MagicMock()
+    market_data.get_current_price.return_value = 110.0
+
+    main.make_hourly_snapshot(conn, market_data, agents)()
+
+    row = conn.execute(
+        "SELECT equity, cash, open_positions FROM equity_snapshots WHERE agent_name = ?",
+        ("trend_follower",),
+    ).fetchone()
+    assert row[0] > config.INITIAL_BALANCE
+    assert row[1] == trend.portfolio.cash
+    assert row[2] == 1

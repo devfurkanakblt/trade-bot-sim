@@ -1,0 +1,10 @@
+[Unit]
+Description=Trade Bot Sim - daily SQLite backup timer
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

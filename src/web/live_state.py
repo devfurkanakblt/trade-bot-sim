@@ -21,6 +21,8 @@ class LiveState:
         cash: float,
         total_value: float,
         positions: dict,
+        mode: str = "SPOT",
+        leverage: int = 1,
     ) -> None:
         now = datetime.datetime.now(datetime.UTC).isoformat()
         with self._lock:
@@ -33,6 +35,8 @@ class LiveState:
                 "cash": cash,
                 "total_value": total_value,
                 "positions": positions,
+                "mode": mode,
+                "leverage": leverage,
                 "updated_at": now,
             }
             self._updated_at = now

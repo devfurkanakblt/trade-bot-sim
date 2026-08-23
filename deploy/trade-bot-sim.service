@@ -11,6 +11,9 @@ ExecStart=/opt/trade-bot-sim/venv/bin/python /opt/trade-bot-sim/main.py
 Restart=always
 RestartSec=10
 User=tradebot
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

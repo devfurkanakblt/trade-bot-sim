@@ -1,0 +1,13 @@
+[Unit]
+Description=Trade Bot Sim - SQLite backup
+After=trade-bot-sim.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/trade-bot-sim
+EnvironmentFile=/opt/trade-bot-sim/.env
+ExecStart=/opt/trade-bot-sim/venv/bin/python -m src.storage.backup
+User=tradebot
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

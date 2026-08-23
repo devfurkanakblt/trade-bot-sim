@@ -1,5 +1,5 @@
 from src.engine.simulation_engine import Agent, SimulationEngine
-from src.portfolio.portfolio import Portfolio
+from src.portfolio.portfolio import FuturesPortfolio, Portfolio
 from src.storage.db import get_trades_since, init_db, load_portfolio_state
 from src.strategies.base import Action, BaseStrategy, Signal
 from src.web.live_state import LiveState
@@ -40,9 +40,12 @@ class BuyThenExplodeStrategy(BaseStrategy):
 class FakeMarketDataClient:
     def __init__(self, price: float = 100.0):
         self.price = price
+        self._next_open_time: dict[str, int] = {}
 
     def get_klines(self, symbol, interval="1h", limit=100):
-        return [{"close": self.price, "open": self.price, "high": self.price, "low": self.price, "volume": 1.0, "open_time": 0}]
+        open_time = self._next_open_time.get(symbol, 0)
+        self._next_open_time[symbol] = open_time + 60_000
+        return [{"close": self.price, "open": self.price, "high": self.price, "low": self.price, "volume": 1.0, "open_time": open_time}]
 
 
 def make_conn():
@@ -188,6 +191,29 @@ def test_run_tick_passes_interval_to_market():
     assert seen["interval"] == "1m"
 
 
+def test_same_closed_candle_is_not_processed_twice():
+    class StaticCandleMarket(FakeMarketDataClient):
+        def get_klines(self, symbol, interval="1h", limit=100):
+            return [{
+                "close": self.price,
+                "open": self.price,
+                "high": self.price,
+                "low": self.price,
+                "volume": 1.0,
+                "open_time": 123_000,
+            }]
+
+    conn = make_conn()
+    strategy = FixedSignalStrategy(Action.BUY)
+    agent = Agent("agent_a", strategy, Portfolio(10_000.0))
+    engine = SimulationEngine([agent], StaticCandleMarket(price=100.0), conn)
+
+    engine.run_tick(["BTCUSDT"])
+    engine.run_tick(["BTCUSDT"])
+
+    assert len(get_trades_since(conn, "agent_a", "1970-01-01T00:00:00")) == 1
+
+
 def test_partial_tick_progress_is_persisted_when_strategy_raises_midway():
     conn = make_conn()
     agent = Agent("agent_a", BuyThenExplodeStrategy(), Portfolio(10_000.0))
@@ -207,3 +233,32 @@ def test_partial_tick_progress_is_persisted_when_strategy_raises_midway():
     assert saved_state is not None
     assert saved_state["cash"] == agent.portfolio.cash
     assert "BTCUSDT" in saved_state["positions"]
+
+
+def test_futures_agent_opens_short_and_flips_to_long_on_opposite_signal():
+    conn = make_conn()
+    portfolio = FuturesPortfolio(10_000.0, leverage=5)
+    agent = Agent("futures", FixedSignalStrategy(Action.SELL), portfolio, position_size_pct=0.1)
+    engine = SimulationEngine([agent], FakeMarketDataClient(price=100.0), conn)
+
+    engine.run_tick(["BTCUSDT"])
+    assert portfolio.positions["BTCUSDT"].side == "SHORT"
+
+    agent.strategy = FixedSignalStrategy(Action.BUY)
+    engine.run_tick(["BTCUSDT"])
+    assert portfolio.positions["BTCUSDT"].side == "LONG"
+
+    trades = get_trades_since(conn, "futures", "1970-01-01T00:00:00")
+    assert [t["side"] for t in trades] == ["OPEN_SHORT", "CLOSE_SHORT", "OPEN_LONG"]
+
+
+def test_futures_stop_loss_does_not_reopen_on_same_tick():
+    conn = make_conn()
+    portfolio = FuturesPortfolio(10_000.0, leverage=5)
+    portfolio.open_position("BTCUSDT", price=100.0, margin=1_000.0, side="LONG")
+    agent = Agent("futures", FixedSignalStrategy(Action.BUY), portfolio, position_size_pct=0.1)
+    engine = SimulationEngine([agent], FakeMarketDataClient(price=97.0), conn)
+
+    engine.run_tick(["BTCUSDT"])
+
+    assert "BTCUSDT" not in portfolio.positions

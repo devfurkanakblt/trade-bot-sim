@@ -1,6 +1,6 @@
 import pytest
 
-from src.portfolio.portfolio import Portfolio
+from src.portfolio.portfolio import FuturesPortfolio, Portfolio
 
 
 def test_buy_reduces_cash_and_creates_position():
@@ -99,3 +99,23 @@ def test_to_state_and_from_state_round_trip():
     assert restored.positions["BTCUSDT"].avg_entry_price == pytest.approx(
         p.positions["BTCUSDT"].avg_entry_price
     )
+
+
+def test_futures_portfolio_uses_isolated_margin_and_realizes_long_pnl():
+    p = FuturesPortfolio(10_000.0, leverage=5)
+    opened = p.open_position("BTCUSDT", price=100.0, margin=1_000.0, side="LONG")
+
+    assert opened["quantity"] == pytest.approx(50.0)
+    assert p.cash == pytest.approx(8_998.0)
+    assert p.total_value({"BTCUSDT": 110.0}) == pytest.approx(10_498.0)
+
+    closed = p.close_position("BTCUSDT", price=110.0)
+    assert closed["pnl"] == pytest.approx(497.8)
+    assert p.cash == pytest.approx(10_495.8)
+    assert not p.positions
+
+
+def test_futures_portfolio_short_profits_when_price_falls():
+    p = FuturesPortfolio(10_000.0, leverage=3)
+    p.open_position("ETHUSDT", price=100.0, margin=1_000.0, side="SHORT")
+    assert p.total_value({"ETHUSDT": 90.0}) > 10_000.0

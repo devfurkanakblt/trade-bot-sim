@@ -13,9 +13,12 @@ def compute_agent_report(
     daily_pnl_abs = balance - previous_balance
     daily_pnl_pct = (daily_pnl_abs / previous_balance * 100) if previous_balance else 0.0
 
-    sell_trades = [t for t in trades_today if t["side"] == "SELL" and t.get("pnl") is not None]
-    wins = [t for t in sell_trades if t["pnl"] > 0]
-    win_rate_pct = (len(wins) / len(sell_trades) * 100) if sell_trades else 0.0
+    closing_trades = [
+        t for t in trades_today
+        if (t["side"] == "SELL" or t["side"].startswith("CLOSE_")) and t.get("pnl") is not None
+    ]
+    wins = [t for t in closing_trades if t["pnl"] > 0]
+    win_rate_pct = (len(wins) / len(closing_trades) * 100) if closing_trades else 0.0
 
     return {
         "name": agent_name,

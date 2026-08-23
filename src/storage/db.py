@@ -32,6 +32,15 @@ CREATE TABLE IF NOT EXISTS balance_snapshots (
     balance REAL NOT NULL,
     PRIMARY KEY (agent_name, snapshot_date)
 );
+
+CREATE TABLE IF NOT EXISTS equity_snapshots (
+    agent_name TEXT NOT NULL,
+    snapshot_timestamp TEXT NOT NULL,
+    equity REAL NOT NULL,
+    cash REAL NOT NULL,
+    open_positions INTEGER NOT NULL,
+    PRIMARY KEY (agent_name, snapshot_timestamp)
+);
 """
 
 
@@ -107,6 +116,29 @@ def get_trades_since(conn: sqlite3.Connection, agent_name: str, since_timestamp:
     ]
 
 
+def get_recent_trades(conn: sqlite3.Connection, limit: int = 100) -> list[dict]:
+    """Return the latest paper trades across all bots for the results screen."""
+    rows = conn.execute(
+        "SELECT agent_name, symbol, side, quantity, price, fee, entry_price, pnl, timestamp "
+        "FROM trades ORDER BY id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [
+        {
+            "agent_name": r[0],
+            "symbol": r[1],
+            "side": r[2],
+            "quantity": r[3],
+            "price": r[4],
+            "fee": r[5],
+            "entry_price": r[6],
+            "pnl": r[7],
+            "timestamp": r[8],
+        }
+        for r in rows
+    ]
+
+
 def save_daily_report(conn: sqlite3.Connection, report_date: str, report_text: str) -> None:
     conn.execute(
         "INSERT INTO daily_reports (report_date, report_text) VALUES (?, ?) "
@@ -132,3 +164,23 @@ def get_previous_balance_snapshot(conn: sqlite3.Connection, agent_name: str, bef
         (agent_name, before_date),
     ).fetchone()
     return row[0] if row is not None else None
+
+
+def save_equity_snapshot(
+    conn: sqlite3.Connection,
+    agent_name: str,
+    snapshot_timestamp: str,
+    equity: float,
+    cash: float,
+    open_positions: int,
+) -> None:
+    """Persist a point on the full portfolio equity curve for drawdown analysis."""
+    conn.execute(
+        "INSERT INTO equity_snapshots "
+        "(agent_name, snapshot_timestamp, equity, cash, open_positions) "
+        "VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(agent_name, snapshot_timestamp) DO UPDATE SET "
+        "equity=excluded.equity, cash=excluded.cash, open_positions=excluded.open_positions",
+        (agent_name, snapshot_timestamp, equity, cash, open_positions),
+    )
+    conn.commit()

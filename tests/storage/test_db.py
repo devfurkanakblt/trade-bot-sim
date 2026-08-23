@@ -2,12 +2,14 @@ import threading
 
 from src.storage.db import (
     get_previous_balance_snapshot,
+    get_recent_trades,
     get_trades_since,
     init_db,
     load_portfolio_state,
     log_trade,
     save_balance_snapshot,
     save_daily_report,
+    save_equity_snapshot,
     save_portfolio_state,
 )
 
@@ -69,6 +71,17 @@ def test_get_trades_since_excludes_earlier_agent_or_date():
     assert trades == []
 
 
+def test_get_recent_trades_returns_all_agents_in_newest_first_order():
+    conn = make_conn()
+    log_trade(conn, "first", "BTCUSDT", "BUY", 1.0, 100.0, 0.1, "2026-07-22T01:00:00")
+    log_trade(conn, "second", "ETHUSDT", "OPEN_SHORT", 2.0, 200.0, 0.2, "2026-07-22T02:00:00")
+
+    trades = get_recent_trades(conn, limit=1)
+    assert len(trades) == 1
+    assert trades[0]["agent_name"] == "second"
+    assert trades[0]["side"] == "OPEN_SHORT"
+
+
 def test_save_daily_report_and_overwrite():
     conn = make_conn()
     save_daily_report(conn, "2026-07-22", "first version")
@@ -90,6 +103,20 @@ def test_balance_snapshot_and_previous_lookup():
 def test_previous_balance_snapshot_none_when_no_history():
     conn = make_conn()
     assert get_previous_balance_snapshot(conn, "trend_follower", "2026-07-22") is None
+
+
+def test_save_equity_snapshot_records_and_updates_hourly_point():
+    conn = make_conn()
+    timestamp = "2026-07-22T10:00:00+00:00"
+    save_equity_snapshot(conn, "trend_follower", timestamp, 10_500.0, 2_000.0, 3)
+    save_equity_snapshot(conn, "trend_follower", timestamp, 10_600.0, 2_100.0, 2)
+
+    row = conn.execute(
+        "SELECT equity, cash, open_positions FROM equity_snapshots "
+        "WHERE agent_name = ? AND snapshot_timestamp = ?",
+        ("trend_follower", timestamp),
+    ).fetchone()
+    assert row == (10_600.0, 2_100.0, 2)
 
 
 def test_connection_allows_writes_from_a_different_thread(tmp_path):
