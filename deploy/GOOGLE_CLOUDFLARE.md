@@ -3,15 +3,17 @@
 This deployment gives the Compute Engine VM an internal IPv4 address and a
 free external IPv6 address, but no billable external IPv4 address. The internal
 IPv4 address lets IAP reach the VM; Cloudflare Worker proxies the two IPv4-only
-APIs used by the application. Do not start the bot until the Worker test
-succeeds.
+APIs used by the application. Binance requests are sent through an
+EU-jurisdiction Durable Object so that a US free-tier VM does not receive
+Binance HTTP 451 responses. Do not start the bot until the Worker test succeeds.
 
 ## 1. Create the Cloudflare Worker
 
 1. In Cloudflare, open **Workers & Pages > Create application**.
 2. Either import this GitHub repository or create a Worker named
    `trade-bot-proxy`. Git imports use the root `wrangler.json`, which points to
-   `deploy/cloudflare-worker.js`; no static-assets directory is required.
+   `deploy/cloudflare-worker.js` and provisions the EU proxy Durable Object; no
+   static-assets directory is required.
 3. For a manually created Worker, replace the editor contents with
    `deploy/cloudflare-worker.js` and deploy.
 4. Under **Settings > Variables and Secrets**, add a secret named
@@ -28,12 +30,14 @@ succeeds.
      "https://YOUR_WORKER.workers.dev/binance/api/v3/ticker/price?symbol=BTCUSDT"
    ```
 
-The request must return HTTP 200 and a BTC price. `X-Proxy-Upstream` identifies
-the approved Binance endpoint that answered. The same request without the
-header must return HTTP 401. HTTP 502 with an `attempts` array means Cloudflare
-was rejected by every approved Binance endpoint; keep that JSON output for
-troubleshooting. A plain HTML 403 after this Worker version is deployed usually
-means the old deployment is still active.
+The request must return HTTP 200 and a BTC price. `X-Proxy-Jurisdiction: eu`
+confirms that the Binance request used the EU Durable Object, while
+`X-Proxy-Upstream` identifies the approved Binance endpoint that answered. The
+same request without the header must return HTTP 401. HTTP 502 with an
+`attempts` array means Cloudflare was rejected by every approved Binance
+endpoint; keep that JSON output for troubleshooting. A plain HTML 403 after
+this Worker version is deployed usually means the old deployment is still
+active.
 
 ## 2. Create the dual-stack Google network
 
@@ -121,14 +125,12 @@ BACKUP_KEEP=14
 
 ## 5. Verify and start
 
-On the VM:
+On the VM, run the proxy check as the same locked-down user that runs the
+service. The `.env` file is intentionally unreadable by the interactive SSH
+user:
 
 ```bash
-set -a
-source /opt/trade-bot-sim/.env
-set +a
-curl -6 -i -H "X-Proxy-Token: $OUTBOUND_PROXY_TOKEN" \
-  "$MARKET_DATA_BASE_URL/api/v3/ticker/price?symbol=BTCUSDT"
+sudo -u tradebot bash -c 'set -a; source /opt/trade-bot-sim/.env; set +a; curl -6 -i -H "X-Proxy-Token: $OUTBOUND_PROXY_TOKEN" "$MARKET_DATA_BASE_URL/api/v3/ticker/price?symbol=BTCUSDT"'
 sudo systemctl start trade-bot-sim
 sudo systemctl status trade-bot-sim --no-pager
 sudo journalctl -u trade-bot-sim -f

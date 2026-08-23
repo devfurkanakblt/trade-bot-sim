@@ -49,6 +49,40 @@ async function fetchBinance(pathAndQuery) {
   };
 }
 
+export class BinanceEuProxy {
+  async fetch(request) {
+    const incoming = new URL(request.url);
+    if (request.method !== "GET" || !incoming.pathname.startsWith("/api/v3/")) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    const result = await fetchBinance(`${incoming.pathname}${incoming.search}`);
+    if (result.diagnostic) {
+      result.diagnostic.headers.set("Cache-Control", "no-store");
+      result.diagnostic.headers.set("X-Proxy-Jurisdiction", "eu");
+      return result.diagnostic;
+    }
+
+    const responseHeaders = new Headers();
+    responseHeaders.set(
+      "Content-Type",
+      result.response.headers.get("Content-Type") || "application/json",
+    );
+    responseHeaders.set("Cache-Control", "no-store");
+    responseHeaders.set("X-Proxy-Jurisdiction", "eu");
+    responseHeaders.set("X-Proxy-Upstream", new URL(result.origin).hostname);
+    responseHeaders.set(
+      "X-Proxy-Upstream-Status",
+      String(result.response.status),
+    );
+
+    return new Response(result.response.body, {
+      status: result.response.status,
+      headers: responseHeaders,
+    });
+  }
+}
+
 export default {
   async fetch(request, env) {
     const suppliedToken = request.headers.get("X-Proxy-Token");
@@ -66,28 +100,13 @@ export default {
         return new Response("Forbidden path", { status: 403 });
       }
 
-      const result = await fetchBinance(`${path}${incoming.search}`);
-      if (result.diagnostic) {
-        result.diagnostic.headers.set("Cache-Control", "no-store");
-        return result.diagnostic;
-      }
-
-      const responseHeaders = new Headers();
-      responseHeaders.set(
-        "Content-Type",
-        result.response.headers.get("Content-Type") || "application/json",
+      const euNamespace = env.BINANCE_EU_PROXY.jurisdiction("eu");
+      const euProxy = euNamespace.getByName("binance-market-data-v1");
+      return euProxy.fetch(
+        new Request(`https://binance-eu.internal${path}${incoming.search}`, {
+          method: "GET",
+        }),
       );
-      responseHeaders.set("Cache-Control", "no-store");
-      responseHeaders.set("X-Proxy-Upstream", new URL(result.origin).hostname);
-      responseHeaders.set(
-        "X-Proxy-Upstream-Status",
-        String(result.response.status),
-      );
-
-      return new Response(result.response.body, {
-        status: result.response.status,
-        headers: responseHeaders,
-      });
     } else if (incoming.pathname === "/pushbullet/v2/pushes") {
       if (request.method !== "POST") {
         return new Response("Method not allowed", { status: 405 });

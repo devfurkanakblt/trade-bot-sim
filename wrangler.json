@@ -3,5 +3,19 @@
   "name": "trade-bot-proxy",
   "main": "deploy/cloudflare-worker.js",
   "compatibility_date": "2026-08-23",
-  "workers_dev": true
+  "workers_dev": true,
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BINANCE_EU_PROXY",
+        "class_name": "BinanceEuProxy"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["BinanceEuProxy"]
+    }
+  ]
 }
