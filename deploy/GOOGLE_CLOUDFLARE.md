@@ -22,12 +22,16 @@ until the Worker test succeeds.
 5. Test the deployed Worker:
 
    ```bash
-   curl -H "X-Proxy-Token: YOUR_TOKEN" \
+   curl -i -H "X-Proxy-Token: YOUR_TOKEN" \
      "https://YOUR_WORKER.workers.dev/binance/api/v3/ticker/price?symbol=BTCUSDT"
    ```
 
-The request must return a BTC price. The same request without the header must
-return HTTP 401.
+The request must return HTTP 200 and a BTC price. `X-Proxy-Upstream` identifies
+the approved Binance endpoint that answered. The same request without the
+header must return HTTP 401. HTTP 502 with an `attempts` array means Cloudflare
+was rejected by every approved Binance endpoint; keep that JSON output for
+troubleshooting. A plain HTML 403 after this Worker version is deployed usually
+means the old deployment is still active.
 
 ## 2. Create the IPv6-only Google network
 
@@ -118,7 +122,7 @@ On the VM:
 set -a
 source /opt/trade-bot-sim/.env
 set +a
-curl -6 -H "X-Proxy-Token: $OUTBOUND_PROXY_TOKEN" \
+curl -6 -i -H "X-Proxy-Token: $OUTBOUND_PROXY_TOKEN" \
   "$MARKET_DATA_BASE_URL/api/v3/ticker/price?symbol=BTCUSDT"
 sudo systemctl start trade-bot-sim
 sudo systemctl status trade-bot-sim --no-pager
