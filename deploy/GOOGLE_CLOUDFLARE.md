@@ -1,8 +1,10 @@
 # Zero-cost Google Compute + Cloudflare deployment
 
-This deployment keeps the Compute Engine VM IPv6-only. Cloudflare Worker
-proxies the two IPv4-only APIs used by the application. Do not start the bot
-until the Worker test succeeds.
+This deployment gives the Compute Engine VM an internal IPv4 address and a
+free external IPv6 address, but no billable external IPv4 address. The internal
+IPv4 address lets IAP reach the VM; Cloudflare Worker proxies the two IPv4-only
+APIs used by the application. Do not start the bot until the Worker test
+succeeds.
 
 ## 1. Create the Cloudflare Worker
 
@@ -33,24 +35,25 @@ was rejected by every approved Binance endpoint; keep that JSON output for
 troubleshooting. A plain HTML 403 after this Worker version is deployed usually
 means the old deployment is still active.
 
-## 2. Create the IPv6-only Google network
+## 2. Create the dual-stack Google network
 
 Run in Google Cloud Shell, replacing `PROJECT_ID`:
 
 ```bash
 gcloud config set project PROJECT_ID
 gcloud compute networks create trade-bot-net --subnet-mode=custom
-gcloud compute networks subnets create trade-bot-v6 \
+gcloud compute networks subnets create trade-bot-dual \
   --network=trade-bot-net \
-  --stack-type=IPV6_ONLY \
+  --range=10.10.0.0/24 \
+  --stack-type=IPV4_IPV6 \
   --ipv6-access-type=EXTERNAL \
   --region=us-central1
-gcloud compute firewall-rules create allow-iap-ssh-v6 \
+gcloud compute firewall-rules create allow-iap-ssh \
   --network=trade-bot-net \
   --direction=INGRESS \
   --action=ALLOW \
   --rules=tcp:22 \
-  --source-ranges=2600:2d00:1:7::/64 \
+  --source-ranges=35.235.240.0/20 \
   --target-tags=iap-ssh
 ```
 
@@ -60,7 +63,9 @@ gcloud compute firewall-rules create allow-iap-ssh-v6 \
 gcloud compute instances create trade-bot-sim \
   --zone=us-central1-a \
   --machine-type=e2-micro \
-  --network-interface=subnet=trade-bot-v6,stack-type=IPV6_ONLY \
+  --subnet=trade-bot-dual \
+  --stack-type=IPV4_IPV6 \
+  --no-address \
   --image-family=ubuntu-2404-lts-amd64 \
   --image-project=ubuntu-os-cloud \
   --boot-disk-type=pd-standard \
